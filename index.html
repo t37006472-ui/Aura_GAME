@@ -4,64 +4,74 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AURA</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; background-color: #000; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; }
+        body { margin: 0; background-color: #111; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        canvas { box-shadow: 0 0 20px rgba(0,255,204,0.2); }
     </style>
 </head>
 <body>
 <script>
+// Cena de Título
 class TitleScene extends Phaser.Scene {
     constructor() { super('TitleScene'); }
     create() {
         const { width, height } = this.scale;
-        
-        this.add.text(width/2, height/3, 'AURA', { 
-            fontSize: '80px', fill: '#00ffcc', fontStyle: 'bold' 
-        }).setOrigin(0.5);
+        this.add.text(width/2, height/3, 'AURA', { fontSize: '60px', fill: '#00ffcc', fontStyle: 'bold' }).setOrigin(0.5);
 
-        // Criar um botão VISÍVEL para teste (Botão Azul)
-        const btnBox = this.add.rectangle(width/2, height/1.8, 400, 100, 0x0000ff, 0.5)
-            .setInteractive({ useHandCursor: true });
+        // Retângulo de interação centralizado
+        const btn = this.add.rectangle(width/2, height/1.8, 300, 80, 0x00ffcc, 0.2).setInteractive();
+        this.add.text(width/2, height/1.8, 'CLIQUE PARA INICIAR', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
 
-        const startText = this.add.text(width/2, height/1.8, 'TOQUE AQUI PARA JOGAR', { 
-            fontSize: '32px', fill: '#fff'
-        }).setOrigin(0.5);
-
-        // Tentar iniciar com qualquer tipo de clique
-        btnBox.on('pointerdown', () => this.doStart());
-        this.input.on('pointerdown', () => this.doStart());
-    }
-
-    doStart() {
-        console.log("Tentando mudar de cena...");
-        this.scene.start('MainScene', { hp: 5, abilities: { doubleJump: true } });
+        btn.on('pointerdown', () => this.scene.start('MainScene'));
+        this.input.once('pointerdown', () => this.scene.start('MainScene'));
     }
 }
 
+// Cena Principal (Teste de Movimento)
 class MainScene extends Phaser.Scene {
     constructor() { super('MainScene'); }
     create() {
-        this.add.text(400, 225, 'JOGO INICIADO!', { fontSize: '40px' }).setOrigin(0.5);
-        // Plataforma simples para teste
-        this.physics.add.staticGroup().add(this.add.rectangle(400, 400, 800, 40, 0x333333));
-        this.player = this.physics.add.sprite(400, 300, null);
+        this.add.text(20, 20, 'AURA: FASE 1', { fill: '#0f0' });
+        
+        // Chão simples
+        this.platforms = this.physics.add.staticGroup();
+        this.platforms.add(this.add.rectangle(400, 430, 800, 40, 0x333).setOrigin(0.5));
+
+        // Player (Bloco verde)
+        this.player = this.physics.add.sprite(100, 300, null);
+        this.player.setOrigin(0.5);
+        this.player.body.setSize(32, 48);
         this.add.rectangle(0, 0, 32, 48, 0x00ff00).setParentContainer(this.player);
+        
         this.player.setCollideWorldBounds(true);
-        this.physics.add.collider(this.player, this.physics.world.staticBodies);
+        this.physics.add.collider(this.player, this.platforms);
+
+        // Controles simples de PC (Setas) para testar se a cena abriu
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.add.text(400, 100, 'Use as setas para mover', { fontSize: '16px' }).setOrigin(0.5);
+    }
+    update() {
+        if (this.cursors.left.isDown) this.player.setVelocityX(-200);
+        else if (this.cursors.right.isDown) this.player.setVelocityX(200);
+        else this.player.setVelocityX(0);
+        if (this.cursors.up.isDown && this.player.body.touching.down) this.player.setVelocityY(-400);
     }
 }
 
+// Configuração do Jogo
 const config = {
     type: Phaser.AUTO,
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 800, height: 450 },
+    width: 800,
+    height: 450,
+    backgroundColor: '#000',
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { y: 1000 } } },
     scene: [TitleScene, MainScene]
 };
 
-// Iniciar o jogo apenas quando a janela carregar totalmente
-window.onload = () => { new Phaser.Game(config); };
+// Inicialização segura
+const game = new Phaser.Game(config);
 </script>
 </body>
 </html>
