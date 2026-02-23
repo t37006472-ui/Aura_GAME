@@ -14,9 +14,8 @@
 
 <script>
 // ==========================================
-// 1. CLASSES E GERENCIADORES
+// 1. GERENCIADORES
 // ==========================================
-
 const SaveManager = {
     saveKey: 'AuraGameSave',
     save: (data) => localStorage.setItem('AuraGameSave', JSON.stringify(data)),
@@ -24,92 +23,9 @@ const SaveManager = {
     clear: () => localStorage.removeItem('AuraGameSave')
 };
 
-class FinalBoss extends Phaser.Physics.Arcade.Sprite {
-    constructor(scene, x, y) {
-        super(scene, x, y, null);
-        scene.add.existing(this);
-        scene.physics.add.existing(this);
-        this.display = scene.add.rectangle(0, 0, 80, 120, 0x9900ff).setParentContainer(this);
-        this.hp = 15;
-        this.isInvincible = false;
-        this.body.setAllowGravity(false).setImmovable(true);
-        this.startAI();
-    }
-
-    startAI() {
-        this.scene.time.addEvent({
-            delay: 2000,
-            callback: () => {
-                if (this.hp <= 0 || !this.body) return;
-                const rand = Phaser.Math.Between(0, 2);
-                if (rand === 0) this.bossDash();
-                else if (rand === 1) this.bossShoot();
-                else this.bossTeleport();
-            },
-            loop: true
-        });
-    }
-
-    bossDash() {
-        if(!this.body) return;
-        this.display.setFillStyle(0xff0000);
-        this.scene.time.delayedCall(500, () => {
-            if (!this.body || !this.scene.player) return;
-            const angle = Phaser.Math.Angle.Between(this.x, this.y, this.scene.player.x, this.scene.player.y);
-            this.scene.physics.velocityFromRotation(angle, 600, this.body.velocity);
-            this.scene.time.delayedCall(800, () => { 
-                if(this.body) this.setVelocity(0); 
-                this.display.setFillStyle(0x9900ff); 
-            });
-        });
-    }
-
-    bossShoot() {
-        if(!this.body) return;
-        for (let i = 0; i < 5; i++) {
-            let bullet = this.scene.bossBullets.get(this.x, this.y);
-            if (bullet) {
-                bullet.setActive(true).setVisible(true);
-                bullet.body.setAllowGravity(false);
-                this.scene.physics.velocityFromAngle(-180 + (i * 45), 300, bullet.body.velocity);
-            }
-        }
-    }
-
-    bossTeleport() {
-        if(!this.body) return;
-        this.scene.tweens.add({
-            targets: this, alpha: 0, duration: 200,
-            onComplete: () => {
-                this.x = Phaser.Math.Between(1500, 1900);
-                this.y = Phaser.Math.Between(100, 400);
-                this.alpha = 1;
-            }
-        });
-    }
-
-    takeDamage() {
-        if (this.isInvincible) return;
-        this.hp--;
-        this.isInvincible = true;
-        this.display.setFillStyle(0xffffff);
-        this.scene.cameras.main.shake(150, 0.01);
-        if (this.hp <= 0) {
-            this.scene.createVictoryParticles(this.x, this.y);
-            this.scene.celebrateVictory();
-            this.destroy();
-        } else {
-            this.scene.time.delayedCall(200, () => { 
-                if(this.active) { this.display.setFillStyle(0x9900ff); this.isInvincible = false; }
-            });
-        }
-    }
-}
-
 // ==========================================
-// 2. CENA DE TÍTULO (CORRIGIDA)
+// 2. CENA DE TÍTULO (VERSÃO ULTRA-ROBUSTA)
 // ==========================================
-
 class TitleScene extends Phaser.Scene {
     constructor() { super('TitleScene'); }
     create() {
@@ -119,188 +35,176 @@ class TitleScene extends Phaser.Scene {
             fontSize: '80px', fill: '#00ffcc', fontStyle: 'bold' 
         }).setOrigin(0.5);
         
-        // Botão com área de toque aumentada
-        const startBtn = this.add.text(width/2, height/1.8, 'NOVO JOGO', { 
-            fontSize: '42px', fill: '#fff', backgroundColor: '#00000001' 
-        })
-        .setOrigin(0.5)
-        .setPadding(20)
-        .setInteractive({ useHandCursor: true });
+        // 1. Criar um retângulo invisível gigante para o botão
+        const hitArea = this.add.rectangle(width/2, height/1.8, 300, 100, 0xffffff, 0.01)
+            .setInteractive({ useHandCursor: true });
 
-        startBtn.on('pointerdown', () => {
-            console.log("Iniciando novo jogo...");
-            SaveManager.clear();
-            this.scene.start('MainScene', { hp: 5, abilities: { doubleJump: true } });
+        const startText = this.add.text(width/2, height/1.8, 'NOVO JOGO', { 
+            fontSize: '42px', fill: '#fff'
+        }).setOrigin(0.5);
+
+        // 2. Tentar iniciar no pointerup (mais estável no mobile)
+        hitArea.on('pointerup', () => this.startGame());
+
+        // 3. Backup: Se clicar em qualquer lado da tela, tenta iniciar
+        this.input.once('pointerdown', () => {
+            console.log("Toque global detetado");
+            this.startGame();
         });
 
         const savedData = SaveManager.load();
         if (savedData) {
-            const contBtn = this.add.text(width/2, height/1.4, 'CONTINUAR', { 
+            this.add.text(width/2, height/1.4, 'CONTINUAR', { 
                 fontSize: '32px', fill: '#ffff00' 
-            })
-            .setOrigin(0.5)
-            .setPadding(10)
-            .setInteractive({ useHandCursor: true });
-
-            contBtn.on('pointerdown', () => {
+            }).setOrigin(0.5).setInteractive().on('pointerup', () => {
                 this.scene.start('MainScene', savedData);
             });
         }
     }
+
+    startGame() {
+        if (this.started) return;
+        this.started = true;
+        console.log("A iniciar MainScene...");
+        SaveManager.clear();
+        this.scene.start('MainScene', { hp: 5, abilities: { doubleJump: true } });
+    }
 }
 
 // ==========================================
-// 3. CENA PRINCIPAL
+// 3. CENA PRINCIPAL (IA DO BOSS E JOGO)
 // ==========================================
+
+class FinalBoss extends Phaser.Physics.Arcade.Sprite {
+    constructor(scene, x, y) {
+        super(scene, x, y, null);
+        scene.add.existing(this);
+        scene.physics.add.existing(this);
+        this.display = scene.add.rectangle(0, 0, 80, 120, 0x9900ff).setParentContainer(this);
+        this.hp = 15;
+        this.body.setAllowGravity(false).setImmovable(true);
+        this.startAI();
+    }
+    startAI() {
+        this.scene.time.addEvent({
+            delay: 2000,
+            callback: () => {
+                if (!this.active || this.hp <= 0) return;
+                const r = Phaser.Math.Between(0, 2);
+                if (r === 0) this.dash(); else if (r === 1) this.shoot(); else this.teleport();
+            },
+            loop: true
+        });
+    }
+    dash() {
+        if(!this.active) return;
+        this.display.setFillStyle(0xff0000);
+        this.scene.time.delayedCall(500, () => {
+            if (!this.active) return;
+            this.scene.physics.moveToObject(this, this.scene.player, 600);
+            this.scene.time.delayedCall(800, () => { if(this.active) this.setVelocity(0); this.display.setFillStyle(0x9900ff); });
+        });
+    }
+    shoot() {
+        for (let i = 0; i < 5; i++) {
+            let b = this.scene.bossBullets.get(this.x, this.y);
+            if (b) {
+                b.setActive(true).setVisible(true).body.setAllowGravity(false);
+                this.scene.physics.velocityFromAngle(-180 + (i * 45), 300, b.body.velocity);
+            }
+        }
+    }
+    teleport() {
+        this.scene.tweens.add({ targets: this, alpha: 0, duration: 200, onComplete: () => {
+            this.x = Phaser.Math.Between(1500, 1900); this.y = Phaser.Math.Between(100, 400); this.alpha = 1;
+        }});
+    }
+    takeDamage() {
+        this.hp--;
+        this.display.setFillStyle(0xffffff);
+        this.scene.time.delayedCall(100, () => this.display.setFillStyle(0x9900ff));
+        if (this.hp <= 0) { this.scene.celebrateVictory(); this.destroy(); }
+    }
+}
 
 class MainScene extends Phaser.Scene {
     constructor() { super('MainScene'); }
-
     init(data) {
         this.hp = data.hp || 5;
         this.abilities = data.abilities || { doubleJump: true };
-        this.playerPos = data.pos || { x: 100, y: 500 };
-        this.isAttacking = false;
         this.moveVal = 0;
-        this.saved = false;
     }
-
     create() {
         const worldWidth = 2000;
         this.physics.world.setBounds(0, 0, worldWidth, 600);
-        
         this.platforms = this.physics.add.staticGroup();
         this.platforms.add(this.add.rectangle(1000, 580, worldWidth, 40, 0x333333));
         this.platforms.add(this.add.rectangle(400, 450, 200, 20, 0x555555));
-        this.platforms.add(this.add.rectangle(1200, 450, 400, 20, 0x555555));
 
-        this.player = this.physics.add.sprite(this.playerPos.x, this.playerPos.y, null);
+        this.player = this.physics.add.sprite(100, 500, null);
         this.player.body.setSize(32, 48);
         this.add.rectangle(0, 0, 32, 48, 0x00ff00).setParentContainer(this.player);
         this.physics.add.collider(this.player, this.platforms);
 
         this.bossBullets = this.physics.add.group();
         this.boss = new FinalBoss(this, 1800, 300);
-        
         this.attackZone = this.add.rectangle(0, 0, 70, 50, 0xffff00, 0);
         this.physics.add.existing(this.attackZone);
         this.attackZone.body.setAllowGravity(false).setEnable(false);
 
         this.physics.add.overlap(this.attackZone, this.boss, (z, b) => b.takeDamage());
-        this.physics.add.overlap(this.player, this.bossBullets, (p, b) => { b.destroy(); this.handleDamage(); });
-        this.physics.add.overlap(this.player, this.boss, () => this.handleDamage());
+        this.physics.add.overlap(this.player, this.bossBullets, (p, b) => { b.destroy(); this.hp--; });
 
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
         this.cameras.main.setBounds(0, 0, worldWidth, 600);
 
         this.createMobileUI();
     }
-
     createMobileUI() {
         this.input.addPointer(2);
         const { width, height } = this.scale;
-        
         const jX = 120, jY = height - 100;
-        this.joyBase = this.add.circle(jX, jY, 50, 0xffffff, 0.1).setScrollFactor(0);
         this.joyThumb = this.add.circle(jX, jY, 25, 0xffffff, 0.3).setScrollFactor(0);
+        this.add.circle(jX, jY, 50, 0xffffff, 0.1).setScrollFactor(0);
 
         const btnJump = this.add.circle(width - 100, height - 100, 50, 0x00ff00, 0.2).setScrollFactor(0).setInteractive();
         const btnAtk = this.add.circle(width - 220, height - 100, 50, 0xff0000, 0.2).setScrollFactor(0).setInteractive();
 
-        btnJump.on('pointerdown', () => this.handleJump());
-        btnAtk.on('pointerdown', () => this.handleAttack());
+        btnJump.on('pointerdown', () => { if(this.player.body.onFloor()) this.player.setVelocityY(-450); });
+        btnAtk.on('pointerdown', () => {
+            this.attackZone.setPosition(this.player.x + (this.player.flipX ? -45 : 45), this.player.y);
+            this.attackZone.body.setEnable(true);
+            this.time.delayedCall(150, () => this.attackZone.body.setEnable(false));
+        });
 
         this.input.on('pointermove', (p) => {
             if (p.isDown && p.x < 400) {
                 let dist = Phaser.Math.Clamp(p.x - jX, -50, 50);
-                this.joyThumb.x = jX + dist;
-                this.moveVal = dist / 50;
+                this.joyThumb.x = jX + dist; this.moveVal = dist / 50;
             }
         });
         this.input.on('pointerup', (p) => { if(p.x < 400) { this.joyThumb.x = jX; this.moveVal = 0; } });
     }
-
-    handleJump() {
-        if (this.player.body.onFloor()) {
-            this.player.setVelocityY(-450);
-            this.jumpCount = 1;
-        } else if (this.abilities.doubleJump && this.jumpCount < 2) {
-            this.player.setVelocityY(-400);
-            this.jumpCount = 2;
-        }
-    }
-
-    handleAttack() {
-        if (this.isAttacking) return;
-        this.isAttacking = true;
-        this.attackZone.setPosition(this.player.x + (this.player.flipX ? -45 : 45), this.player.y);
-        this.attackZone.body.setEnable(true);
-        this.time.delayedCall(150, () => { if(this.attackZone.body) this.attackZone.body.setEnable(false); this.isAttacking = false; });
-    }
-
-    handleDamage() {
-        if (this.invuln) return;
-        this.invuln = true;
-        this.hp--;
-        this.player.setAlpha(0.5);
-        this.cameras.main.shake(100, 0.01);
-        this.time.delayedCall(1000, () => { if(this.player.active) { this.invuln = false; this.player.setAlpha(1); } });
-        if (this.hp <= 0) this.scene.restart();
-    }
-
-    createVictoryParticles(x, y) {
-        for (let i = 0; i < 30; i++) {
-            let p = this.add.rectangle(x, y, 8, 8, 0x00ffcc);
-            this.physics.add.existing(p);
-            p.body.setVelocity(Phaser.Math.Between(-300, 300), Phaser.Math.Between(-500, 0));
-        }
-    }
-
     celebrateVictory() {
-        this.physics.pause();
-        this.cameras.main.stopFollow();
-        this.cameras.main.pan(this.boss.x, this.boss.y, 1000, 'Power2');
-        this.cameras.main.zoomTo(1.5, 2000);
-        
-        let txt = this.add.text(this.boss.x, this.boss.y - 100, 'VITÓRIA', { fontSize: '80px', fill: '#00ffcc' }).setOrigin(0.5).setAlpha(0);
-        this.tweens.add({ targets: txt, alpha: 1, y: txt.y - 50, duration: 2000, onComplete: () => this.showCredits() });
+        this.add.text(this.player.x, 200, 'VITÓRIA!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
+        this.time.delayedCall(3000, () => location.reload());
     }
-
-    showCredits() {
-        this.add.rectangle(400, 225, 800, 450, 0x000, 0.8).setScrollFactor(0);
-        this.add.text(400, 200, 'PARABÉNS, TÁRCIO!\nO MUNDO DE AURA ESTÁ SALVO.', { align: 'center' }).setOrigin(0.5).setScrollFactor(0);
-        this.add.text(400, 300, 'TOQUE PARA REINICIAR', { fill: '#ff0' }).setOrigin(0.5).setScrollFactor(0).setInteractive().on('pointerdown', () => location.reload());
-    }
-
     update() {
-        if (!this.player.active) return;
         this.player.setVelocityX(this.moveVal * 250);
         if (this.moveVal !== 0) this.player.setFlipX(this.moveVal < 0);
-        
-        if (this.player.x > 1000 && !this.saved) {
-            this.saved = true;
-            SaveManager.save({ hp: this.hp, abilities: this.abilities, pos: { x: 1050, y: 500 } });
-        }
-
-        if (this.player.x > 1400 && this.boss && this.boss.active) {
-            if (!this.hpBar) this.hpBar = this.add.rectangle(400, 40, 400, 15, 0xff0000).setScrollFactor(0);
-            this.hpBar.width = (this.boss.hp / 15) * 400;
-        }
     }
 }
 
 // ==========================================
 // 4. CONFIGURAÇÃO
 // ==========================================
-
 const config = {
     type: Phaser.AUTO,
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 800, height: 450 },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1000 }, debug: false } },
+    physics: { default: 'arcade', arcade: { gravity: { y: 1000 } } },
     scene: [TitleScene, MainScene]
 };
 const game = new Phaser.Game(config);
-
 </script>
 </body>
 </html>
