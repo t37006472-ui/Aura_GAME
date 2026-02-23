@@ -3,99 +3,169 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AURA</title>
+    <title>AURA - Metroidvania</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; background-color: #000; overflow: hidden; }
+        body { margin: 0; background-color: #000; overflow: hidden; touch-action: none; }
         canvas { display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
 <script>
-// Cena de Título
+// ==========================================
+// 1. CONFIGURAÇÕES E BOSS
+// ==========================================
+
+class FinalBoss extends Phaser.Physics.Arcade.Sprite {
+    constructor(scene, x, y) {
+        super(scene, x, y, null);
+        scene.add.existing(this);
+        scene.physics.add.existing(this);
+        this.visual = scene.add.rectangle(x, y, 80, 120, 0x9900ff);
+        this.hp = 15;
+        this.body.setAllowGravity(false).setImmovable(true);
+        this.startAI();
+    }
+    startAI() {
+        this.scene.time.addEvent({
+            delay: 2000,
+            callback: () => {
+                if (!this.active || this.hp <= 0) return;
+                const r = Phaser.Math.Between(0, 2);
+                if (r === 0) this.bossDash(); else if (r === 1) this.bossShoot(); else this.bossTeleport();
+            },
+            loop: true
+        });
+    }
+    bossDash() {
+        this.visual.setFillStyle(0xff0000);
+        this.scene.time.delayedCall(500, () => {
+            if (!this.active) return;
+            this.scene.physics.moveToObject(this, this.scene.player, 500);
+            this.scene.time.delayedCall(1000, () => { if(this.active) this.setVelocity(0); this.visual.setFillStyle(0x9900ff); });
+        });
+    }
+    bossShoot() {
+        for (let i = 0; i < 5; i++) {
+            let b = this.scene.bossBullets.get(this.x, this.y);
+            if (b) {
+                b.setActive(true).setVisible(true).body.setAllowGravity(false);
+                this.scene.physics.velocityFromAngle(-180 + (i * 45), 300, b.body.velocity);
+            }
+        }
+    }
+    bossTeleport() {
+        this.scene.tweens.add({ targets: [this, this.visual], alpha: 0, duration: 200, onComplete: () => {
+            this.x = Phaser.Math.Between(1400, 1900); this.y = Phaser.Math.Between(100, 400);
+            this.alpha = 1; this.visual.alpha = 1;
+        }});
+    }
+    update() { this.visual.x = this.x; this.visual.y = this.y; }
+}
+
+// ==========================================
+// 2. CENA DE TÍTULO
+// ==========================================
+
 class TitleScene extends Phaser.Scene {
     constructor() { super('TitleScene'); }
     create() {
         const { width, height } = this.scale;
-        this.add.text(width/2, height/3, 'AURA', { fontSize: '60px', fill: '#00ffcc', fontStyle: 'bold' }).setOrigin(0.5);
-
-        // Botão de início
-        const btn = this.add.rectangle(width/2, height/1.8, 300, 80, 0x00ffcc, 0.2).setInteractive();
-        this.add.text(width/2, height/1.8, 'CLIQUE PARA JOGAR', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
-
-        // Transição para a MainScene
+        this.add.text(width/2, height/3, 'AURA', { fontSize: '80px', fill: '#00ffcc', fontStyle: 'bold' }).setOrigin(0.5);
+        const btn = this.add.rectangle(width/2, height/1.8, 400, 100, 0x00ffcc, 0.2).setInteractive();
+        this.add.text(width/2, height/1.8, 'NOVO JOGO', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
         btn.on('pointerdown', () => this.scene.start('MainScene'));
         this.input.once('pointerdown', () => this.scene.start('MainScene'));
     }
 }
 
-// Cena Principal
+// ==========================================
+// 3. CENA PRINCIPAL
+// ==========================================
+
 class MainScene extends Phaser.Scene {
     constructor() { super('MainScene'); }
-    create() {
-        // 1. Chão
-        this.platforms = this.physics.add.staticGroup();
-        this.platforms.add(this.add.rectangle(400, 430, 800, 40, 0x333333));
 
-        // 2. Player (Removido o erro de setParentContainer)
-        // Criamos o sprite e o visual separadamente, mas o visual segue o sprite no update
-        this.player = this.physics.add.sprite(100, 300, null);
-        this.player.body.setSize(32, 48);
-        this.player.setCollideWorldBounds(true);
-        
-        // Criamos o retângulo visual
+    create() {
+        const worldWidth = 2000;
+        this.physics.world.setBounds(0, 0, worldWidth, 600);
+        this.platforms = this.physics.add.staticGroup();
+        this.platforms.add(this.add.rectangle(1000, 580, worldWidth, 40, 0x333333));
+        this.platforms.add(this.add.rectangle(400, 450, 200, 20, 0x555555));
+
+        // Player
+        this.player = this.physics.add.sprite(100, 500, null);
+        this.player.body.setSize(32, 48).setCollideWorldBounds(true);
         this.playerVisual = this.add.rectangle(0, 0, 32, 48, 0x00ff00);
-        
-        // Colisão
         this.physics.add.collider(this.player, this.platforms);
 
-        // 3. Controles (Keyboard + Toque na tela para pular)
-        this.cursors = this.input.keyboard.createCursorKeys();
-        this.input.on('pointerdown', () => {
-            if (this.player.body.touching.down) this.player.setVelocityY(-450);
+        // Combate
+        this.bossBullets = this.physics.add.group();
+        this.boss = new FinalBoss(this, 1800, 300);
+        this.attackZone = this.add.rectangle(0, 0, 80, 50, 0xffff00, 0);
+        this.physics.add.existing(this.attackZone);
+        this.attackZone.body.setAllowGravity(false).setEnable(false);
+
+        // Colisões
+        this.physics.add.overlap(this.attackZone, this.boss, (z, b) => {
+            b.hp--; b.visual.setFillStyle(0xffffff);
+            this.time.delayedCall(100, () => b.visual.setFillStyle(0x9900ff));
+            if (b.hp <= 0) { b.visual.destroy(); b.destroy(); this.celebrate(); }
         });
 
-        this.add.text(10, 10, 'AURA - Use Setas ou Toque para Pular', { fill: '#0f0' });
+        this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+        this.cameras.main.setBounds(0, 0, worldWidth, 600);
+
+        this.createUI();
+    }
+
+    createUI() {
+        this.input.addPointer(2);
+        const { width, height } = this.scale;
+        this.joyBase = this.add.circle(120, height - 100, 50, 0xffffff, 0.1).setScrollFactor(0);
+        this.joyThumb = this.add.circle(120, height - 100, 25, 0xffffff, 0.3).setScrollFactor(0);
+        this.moveVal = 0;
+
+        const btnJump = this.add.circle(width - 100, height - 100, 50, 0x00ff00, 0.2).setScrollFactor(0).setInteractive();
+        const btnAtk = this.add.circle(width - 220, height - 100, 50, 0xff0000, 0.2).setScrollFactor(0).setInteractive();
+
+        btnJump.on('pointerdown', () => { if(this.player.body.touching.down) this.player.setVelocityY(-450); });
+        btnAtk.on('pointerdown', () => {
+            this.attackZone.setPosition(this.player.x + (this.player.flipX ? -50 : 50), this.player.y);
+            this.attackZone.body.setEnable(true);
+            this.time.delayedCall(150, () => this.attackZone.body.setEnable(false));
+        });
+
+        this.input.on('pointermove', (p) => {
+            if (p.isDown && p.x < 400) {
+                let dist = Phaser.Math.Clamp(p.x - 120, -50, 50);
+                this.joyThumb.x = 120 + dist; this.moveVal = dist / 50;
+            }
+        });
+        this.input.on('pointerup', (p) => { if(p.x < 400) { this.joyThumb.x = 120; this.moveVal = 0; } });
+    }
+
+    celebrate() {
+        this.add.text(this.player.x, 200, 'VITÓRIA!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
+        this.time.delayedCall(3000, () => location.reload());
     }
 
     update() {
-        // Movimento Horizontal
-        if (this.cursors.left.isDown) {
-            this.player.setVelocityX(-200);
-        } else if (this.cursors.right.isDown) {
-            this.player.setVelocityX(200);
-        } else {
-            this.player.setVelocityX(0);
-        }
-
-        // Pulo Keyboard
-        if (this.cursors.up.isDown && this.player.body.touching.down) {
-            this.player.setVelocityY(-450);
-        }
-
-        // FAZER O VISUAL SEGUIR O CORPO FÍSICO
+        this.player.setVelocityX(this.moveVal * 250);
+        if (this.moveVal !== 0) this.player.setFlipX(this.moveVal < 0);
         this.playerVisual.x = this.player.x;
         this.playerVisual.y = this.player.y;
+        if (this.boss.active) this.boss.update();
     }
 }
 
-// Configuração do Jogo
 const config = {
     type: Phaser.AUTO,
-    scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: 800,
-        height: 450
-    },
-    physics: {
-        default: 'arcade',
-        arcade: { gravity: { y: 1000 }, debug: false }
-    },
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 800, height: 450 },
+    physics: { default: 'arcade', arcade: { gravity: { y: 1000 } } },
     scene: [TitleScene, MainScene]
 };
-
-const game = new Phaser.Game(config);
+new Phaser.Game(config);
 </script>
 </body>
 </html>
