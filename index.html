@@ -6,8 +6,8 @@
     <title>AURA</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; background-color: #111; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        canvas { box-shadow: 0 0 20px rgba(0,255,204,0.2); }
+        body { margin: 0; background-color: #000; overflow: hidden; }
+        canvas { display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -19,58 +19,82 @@ class TitleScene extends Phaser.Scene {
         const { width, height } = this.scale;
         this.add.text(width/2, height/3, 'AURA', { fontSize: '60px', fill: '#00ffcc', fontStyle: 'bold' }).setOrigin(0.5);
 
-        // Retângulo de interação centralizado
+        // Botão de início
         const btn = this.add.rectangle(width/2, height/1.8, 300, 80, 0x00ffcc, 0.2).setInteractive();
-        this.add.text(width/2, height/1.8, 'CLIQUE PARA INICIAR', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(width/2, height/1.8, 'CLIQUE PARA JOGAR', { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
 
+        // Transição para a MainScene
         btn.on('pointerdown', () => this.scene.start('MainScene'));
         this.input.once('pointerdown', () => this.scene.start('MainScene'));
     }
 }
 
-// Cena Principal (Teste de Movimento)
+// Cena Principal
 class MainScene extends Phaser.Scene {
     constructor() { super('MainScene'); }
     create() {
-        this.add.text(20, 20, 'AURA: FASE 1', { fill: '#0f0' });
-        
-        // Chão simples
+        // 1. Chão
         this.platforms = this.physics.add.staticGroup();
-        this.platforms.add(this.add.rectangle(400, 430, 800, 40, 0x333).setOrigin(0.5));
+        this.platforms.add(this.add.rectangle(400, 430, 800, 40, 0x333333));
 
-        // Player (Bloco verde)
+        // 2. Player (Removido o erro de setParentContainer)
+        // Criamos o sprite e o visual separadamente, mas o visual segue o sprite no update
         this.player = this.physics.add.sprite(100, 300, null);
-        this.player.setOrigin(0.5);
         this.player.body.setSize(32, 48);
-        this.add.rectangle(0, 0, 32, 48, 0x00ff00).setParentContainer(this.player);
-        
         this.player.setCollideWorldBounds(true);
+        
+        // Criamos o retângulo visual
+        this.playerVisual = this.add.rectangle(0, 0, 32, 48, 0x00ff00);
+        
+        // Colisão
         this.physics.add.collider(this.player, this.platforms);
 
-        // Controles simples de PC (Setas) para testar se a cena abriu
+        // 3. Controles (Keyboard + Toque na tela para pular)
         this.cursors = this.input.keyboard.createCursorKeys();
-        this.add.text(400, 100, 'Use as setas para mover', { fontSize: '16px' }).setOrigin(0.5);
+        this.input.on('pointerdown', () => {
+            if (this.player.body.touching.down) this.player.setVelocityY(-450);
+        });
+
+        this.add.text(10, 10, 'AURA - Use Setas ou Toque para Pular', { fill: '#0f0' });
     }
+
     update() {
-        if (this.cursors.left.isDown) this.player.setVelocityX(-200);
-        else if (this.cursors.right.isDown) this.player.setVelocityX(200);
-        else this.player.setVelocityX(0);
-        if (this.cursors.up.isDown && this.player.body.touching.down) this.player.setVelocityY(-400);
+        // Movimento Horizontal
+        if (this.cursors.left.isDown) {
+            this.player.setVelocityX(-200);
+        } else if (this.cursors.right.isDown) {
+            this.player.setVelocityX(200);
+        } else {
+            this.player.setVelocityX(0);
+        }
+
+        // Pulo Keyboard
+        if (this.cursors.up.isDown && this.player.body.touching.down) {
+            this.player.setVelocityY(-450);
+        }
+
+        // FAZER O VISUAL SEGUIR O CORPO FÍSICO
+        this.playerVisual.x = this.player.x;
+        this.playerVisual.y = this.player.y;
     }
 }
 
 // Configuração do Jogo
 const config = {
     type: Phaser.AUTO,
-    width: 800,
-    height: 450,
-    backgroundColor: '#000',
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    physics: { default: 'arcade', arcade: { gravity: { y: 1000 } } },
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: 800,
+        height: 450
+    },
+    physics: {
+        default: 'arcade',
+        arcade: { gravity: { y: 1000 }, debug: false }
+    },
     scene: [TitleScene, MainScene]
 };
 
-// Inicialização segura
 const game = new Phaser.Game(config);
 </script>
 </body>
